@@ -2246,9 +2246,13 @@ async function fillIceland(doc, pages, fontReg, fontBold) {
   const ic19email = v('f19_email') ? 'E.: ' + v('f19_email') : '';
   sfs('Applicants home adress 1', [ic19addr, ic19email].filter(Boolean).join('\r\n'), 6);
   sf('Telephone no  1',      v('f19_phone'));
+  // Item 20 residence-permit blanks (verified physical positions):
+  //   'Rrsidence permit no 1' (x364) = permit NUMBER  -> after "No. / 编码"
+  //   'Rrsidence permit 2'    (x168) = blank after "Residence permit or equivalent /" (no input -> leave empty)
+  //   'Rrsidence permit 3'    (x88, next line) = "Valid until / 有效期至" DATE
   sf('Rrsidence permit no 1',v('f20_permit_num'));
-  sf('Rrsidence permit 2',   fd(v('f20_permit_exp')));
-  sf('Rrsidence permit 3',   '');
+  sf('Rrsidence permit 2',   '');
+  sf('Rrsidence permit 3',   fd(v('f20_permit_exp')));
   sf('Current occupation 1', v('f21_occupation'));
   // Item 22: 字号缩小至6
   const ic22parts = [
@@ -2257,8 +2261,12 @@ async function fillIceland(doc, pages, fontReg, fontBold) {
     v('f22_emp_phone')   ? 'Tel.: '  + v('f22_emp_phone')   : '',
   ].filter(Boolean);
   sfs('Employer 1', ic22parts.join('\r\n'), 6);
-  sf('Additional information on purpose of stay 1', v('f24_add_info'));
-  sf('Member State of main destination 1', v('f25_main_dest'));
+  // ⚠️ This PDF's internal field NAMES for items 24 & 25 are SWAPPED vs the printed labels.
+  // The box printed under "24. Additional information" is internally named "Member State of main destination 1";
+  // the box printed under "25. Member State of main destination" is internally named "Additional information ... 1".
+  // We deliberately cross-assign so the printed form shows the correct content.
+  sf('Member State of main destination 1', v('f24_add_info'));          // -> printed label 24 (Additional info)
+  sf('Additional information on purpose of stay 1', v('f25_main_dest')); // -> printed label 25 (Main destination)
   sf('Member State of first entry 1', v('f26_first_entry'));
   sf('Intended date of arrival 1',   fd(v('f28_arrival')));
   sf('Intended date of departure 1', fd(v('f28_departure')));
@@ -2280,52 +2288,45 @@ async function fillIceland(doc, pages, fontReg, fontBold) {
   sf('Filling in the application2', [ic34addr, ic34email].filter(Boolean).join('\n'));
   sf('Filling in the application3', v('f34_phone'));
 
-  // Radio buttons (ON state values: Sex='0/1/2', Civil='Single'/etc, DocType='0-5')
-  // Sex: 0=Male, 1=Female, 2=Other — horizontal layout on item 8 row
-  const sexIcMap = {male:'0', female:'1', other:'2'};
+  // Sex (item 8) — draw X by exact box coordinates.
+  // The PDF radio /Opt is ['Male','Female','Female'] (3rd is a duplicate), so select() is unreliable:
+  // select('Female') wrongly lands on the 3rd (Other) box. Coordinates are the only safe method.
+  // Real box rects (pdf-lib bottom-left): Male x=124.6 / Female x=244.5 / Other x=377.4, y_bottom=408.5, size≈6.8
   const sexVal = rv('sex');
-  try { sr('Sex', sexIcMap[sexVal]); } catch(e) {}
-  // Fallback: Sex radios are HORIZONTAL on page 1 item 8 row (y≈421)
-  // Male □ ≈ x=233, Female □ ≈ x=398, Other □ ≈ x=513
   {
-    const icSexX = {male:233, female:355, other:513};
+    const icSexX = {male:125.3, female:245.2, other:378.1};
     if (icSexX[sexVal]) {
-      pages[0].drawText('X', { x: icSexX[sexVal], y: 841.9 - 421, size: 7,
+      pages[0].drawText('X', { x: icSexX[sexVal], y: 409.6, size: 7,
         font: fontBold, color: PDFLib.rgb(0,0,0) });
     }
   }
 
   const marIcMap = {single:'Single', married:'Married', registered:'Registered partnershio',
-                    separated:'Separated', divorced:'Divorced', widowed:'Widow(er)', other:'Other'};
+                    separated:'Separated', divorced:'Divorced', widowed:'Widow(er)',
+                    other:'Other', other_mar:'Other'};  // form radio uses value 'other_mar'
   if (marIcMap[rv('marital')]) sr('Civil status', marIcMap[rv('marital')]);
+  // Civil status "Other, please specify" text -> PDF field 'Text Field 15'
+  sf('Text Field 15', rv('marital')==='other_mar' ? v('mar_other_text') : '');
 
-  // Doc type: 0=Ordinary, 1=Diplomatic, 2=Service, 3=Official, 4=Special, 5=Other
-  const docIcMap = {ordinary:'0', diplomatic:'1', service:'2', official:'3', special:'4', other:'5'};
+  // Doc type — real AcroForm option values (verified against embedded PDF)
+  const docIcMap = {ordinary:'Ordinary passport', diplomatic:'Diplomatic passport', service:'Service passport',
+                    official:'Official passport', special:'Special passport', other:'Other travel document'};
   if (docIcMap[rv('doctype')]) sr('Type of travel document', docIcMap[rv('doctype')]);
-  // Fallback: draw X at the correct radio position (verified by visual test)
-  // mupdf center_y: ordinary=637.4, diplomatic=646.5, service=655.5, official=664.4, special=673.5, other=682.4
-  {
-    const icDocMap2 = {ordinary:637, diplomatic:647, service:656, official:664, special:674, other:682};
-    const dt12ic = rv('doctype');
-    if (icDocMap2[dt12ic]) {
-      pages[0].drawText('X', { x: 151, y: 841.9 - icDocMap2[dt12ic], size: 7,
-        font: fontBold, color: PDFLib.rgb(0,0,0) });
-    }
-  }
 
   // Family relationship: 0=Spouse, 1=Child, 2=Grandchild, 3=Dependent, 4=Partnership, 5=Other
-  const relIcMap = {spouse:'0', child:'1', grandchild:'2', dependent:'3', partner:'4', other_rel:'5'};
+  const relIcMap = {spouse:'Spouse', child:'Child', grandchild:'Grandchild',
+                    dependent:'Dependent ascendant', partner:'Registered partnership', other_rel:'Other'};
   if (relIcMap[rv('relation')]) sr('Family relationship', relIcMap[rv('relation')]);
 
-  // Residence: 0=No, 1=Yes
-  sr('Residence', rv('res')==='yes' ? '1' : '0');
+  // Residence — real options ['No','Yes']
+  sr('Residence', rv('res')==='yes' ? 'Yes' : 'No');
 
-  // Entries: 0=Single, 1=Two, 2=Multiple
-  const entIcMap = {one:'0', two:'1', multiple:'2'};
+  // Entries — real options ['Single entry','Two entries','Multiple entries']
+  const entIcMap = {one:'Single entry', two:'Two entries', multiple:'Multiple entries'};
   if (entIcMap[rv('entries')]) sr('Number of entries requested', entIcMap[rv('entries')]);
 
-  // Fingerprints: 0=No, 1=Yes
-  sr('Fingerprints', rv('fp')==='yes' ? '1' : '0');
+  // Fingerprints — real options ['No','Yes']
+  sr('Fingerprints', rv('fp')==='yes' ? 'Yes' : 'No');
 
   // Checkboxes (ON state = 'Yes')
   sc('Tourism',                    ck('c_tourism'));
@@ -2337,6 +2338,10 @@ async function fillIceland(doc, pages, fontReg, fontBold) {
   sc('Medical reasons',            ck('c_medical'));
   sc('Study',                      ck('c_study'));
   sc('Airport transit',            ck('c_transit'));
+  // Purpose "Other (please specify)" — no dedicated checkbox in form; tick it when the text is filled
+  const f23other = v('f23_other_text');
+  sc('Other (please specify)',     !!f23other);
+  sf('Employer Other 1',           f23other);   // PDF field name is misleading: this box is purpose-other text
   const isSelf = rv('cost')==='self';
   sc('Cost of travelling by 1',    isSelf);
   sc('Means of support 11',        ck('c_cash') && isSelf);
@@ -2344,11 +2349,17 @@ async function fillIceland(doc, pages, fontReg, fontBold) {
   sc('Means of support 13',        ck('c_card'));
   sc('Means of support 14',        ck('c_accom'));
   sc('Means of support 15',        ck('c_transport'));
+  // Applicant means "Other (please specify)" checkbox + text
+  sc('Means of support 16',        ck('c_other_pay') && isSelf);
+  sf('Cost of travelling Means on support 3', (ck('c_other_pay') && isSelf) ? v('self_other_text') : '');
   sc('Means of support 17',        !isSelf);
   sc('Means of support 18',        ck('c_sp_cash'));
   sc('Means of support 19',        ck('c_sp_accom'));
   sc('Means of support 20',        ck('c_sp_all'));
   sc('Means of support 21',        ck('c_sp_transport'));
+  // Sponsor means "Other (please specify)" checkbox + text
+  sc('Means of support 22',        ck('c_sp_other') && !isSelf);
+  sf('Means of support 10 spcify 1', (ck('c_sp_other') && !isSelf) ? v('sp_other_text') : '');
 
   // FLATTEN to remove blue AcroForm boxes
   try { form.flatten(); } catch(e) { console.warn('flatten failed:', e); }
