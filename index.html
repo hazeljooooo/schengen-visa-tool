@@ -810,7 +810,25 @@ document.querySelectorAll('input[name="cost"]').forEach(r=>r.addEventListener('c
   document.getElementById('pg_sponsor_pay').style.display=isSponsor?'':'none';
 }));
 
-function v(id){const e=document.getElementById(id);return e?e.value.trim():'';}
+// Sanitize text so pdf-lib's WinAnsi (Latin-1) standard font can always encode it.
+// Converts full-width chars & common CJK punctuation to ASCII, then drops anything
+// the font can't encode (e.g. stray Chinese characters) so export never crashes.
+function clean(s){
+  if(!s) return s;
+  // full-width ASCII variants (！ .. ～ , U+FF01-FF5E) -> normal ASCII
+  s = s.replace(/[！-～]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  // ideographic space -> normal space
+  s = s.replace(/　/g, ' ');
+  // common CJK / smart punctuation -> ASCII equivalents
+  const m = {'，':',','。':'.','、':',','；':';','：':':','？':'?','！':'!','（':'(','）':')',
+             '【':'[','】':']','「':'"','」':'"','『':'"','』':'"','《':'<','》':'>',
+             '—':'-','–':'-','～':'~','·':'.','…':'...','“':'"','”':'"','‘':"'",'’':"'"};
+  s = s.replace(/[，。、；：？！（）【】「」『』《》—–～·…“”‘’]/g, c => m[c] || c);
+  // drop any remaining char outside Latin-1 (keep \t \n \r); these can't render in the form font anyway
+  s = s.replace(/[^\t\n\r\x20-\xFF]/g, '');
+  return s;
+}
+function v(id){const e=document.getElementById(id);return e?clean(e.value.trim()):'';}
 function rv(name){const c=document.querySelector('input[name="'+name+'"]:checked');return c?c.value:'';}
 function ck(id){return !!(document.getElementById(id)?.checked);}
 function fd(s){if(!s)return'';const p=s.split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:s;}
@@ -2241,10 +2259,25 @@ async function fillIceland(doc, pages, fontReg, fontBold) {
   sf('Nationality 1',        v('f17_eu_nationality'));
   sf('Number of travel document or ID card 1', v('f17_eu_doc_num'));
   sf('Family relationship other 1', rv('relation')==='other_rel' ? v('rel_other_text') : '');
-  // Item 19: 字号缩小至6，地址+邮箱分行
-  const ic19addr = v('f19_address') ? 'Addr.: ' + v('f19_address') : '';
-  const ic19email = v('f19_email') ? 'E.: ' + v('f19_email') : '';
-  sfs('Applicants home adress 1', [ic19addr, ic19email].filter(Boolean).join('\r\n'), 6);
+  // Item 19: address + e-mail on TWO separate lines, drawn manually so they never overflow
+  // into the Telephone field on the right. Box: x 25.8–386.4, Telephone starts at x≈390.
+  // Lines are placed from the TOP of the box downward so both fit; font auto-shrinks to width.
+  {
+    const a = v('f19_address');
+    const e = v('f19_email');
+    const l1 = a ? 'Addr.: ' + a : '';
+    const l2 = e ? 'E.: ' + e : '';
+    const maxW = 354;                 // usable width inside box (386.4 - left pad - right margin)
+    const fit = (txt) => { let sz = 6.5; while (sz > 4 && fontReg.widthOfTextAtSize(txt, sz) > maxW) sz -= 0.5; return sz; };
+    const X = 28, blk = PDFLib.rgb(0,0,0);
+    if (l1 && l2) {                   // two lines, near the top of the box
+      pages[1].drawText(l1, { x: X, y: 595, size: fit(l1), font: fontReg, color: blk });
+      pages[1].drawText(l2, { x: X, y: 585, size: fit(l2), font: fontReg, color: blk });
+    } else if (l1 || l2) {            // only one present -> single centered line
+      const only = l1 || l2;
+      pages[1].drawText(only, { x: X, y: 589, size: fit(only), font: fontReg, color: blk });
+    }
+  }
   sf('Telephone no  1',      v('f19_phone'));
   // Item 20 residence-permit blanks (verified physical positions):
   //   'Rrsidence permit no 1' (x364) = permit NUMBER  -> after "No. / 编码"
