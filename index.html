@@ -1396,7 +1396,7 @@ async function fillItalyShanghai(doc, pages, fontReg, fontBold) {
     { prefix: 'Co.:',   value: v('f22_employer')    },
     { prefix: 'Addr.:', value: v('f22_emp_address') },
     { prefix: 'Tel.:',  value: v('f22_emp_phone')   },
-  ], 34, 841.9 - 300, fontReg, 7, 460, 9, 3);
+  ], 34, 841.9 - 302, fontReg, 7, 460, 9, 3);
   dcb(p2, ck('c_tourism'),    34, 335);
   dcb(p2, ck('c_business'),  130, 335);
   dcb(p2, ck('c_family'),    226, 335);
@@ -1424,7 +1424,24 @@ async function fillItalyShanghai(doc, pages, fontReg, fontBold) {
   dt(p2, fd(v('f30_permit_from')), 360, 693,  80);
   dt(p2, fd(v('f30_permit_to')),   470, 693,  80);
   dtm(p2, v('f31_inviter_name'), 34, 749, 380);
-  dtm(p2, v('f31_address'),  34, 809, 340);
+  // Item 31 地址+邮箱：尽量写在同一行；自动缩小字号以适配方框宽度，避免邮箱被挤到下一行而超出表格
+  (function(){
+    const { rgb } = PDFLib;
+    const raw = v('f31_address');
+    if (!raw) return;
+    const text = _sanitize(raw).replace(/\s+/g, ' ').trim();
+    if (!text) return;
+    const x = 34, maxW = 340, startY = 806; // 较原位置上移 1px
+    // 从 7pt 起逐步缩小，让地址+邮箱容纳在同一行
+    let fs = 7;
+    while (fs > 4.5 && fontReg.widthOfTextAtSize(text, fs) > maxW) fs -= 0.25;
+    if (fontReg.widthOfTextAtSize(text, fs) <= maxW) {
+      p2.drawText(text, { x, y: 841.9 - startY, size: fs, font: fontReg, color: rgb(0,0,0), maxWidth: maxW });
+    } else {
+      // 极端超长才换行，行距收紧(9)以保证两行都落在方框内
+      _dtmul(p2, text, x, 841.9 - startY, fontReg, fs, maxW, 9);
+    }
+  })();
   dt(p2, v('f31_phone'),    380, 792,  90);
 
   // PAGE 3
