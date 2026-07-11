@@ -135,7 +135,7 @@ textarea{resize:vertical;min-height:60px}
     </div>
     <div class="fg">
       <label><span class="fn">4</span> 出生日期 Date of birth <span class="req">*</span></label>
-      <input id="f04_dob" type="date">
+      <input id="f04_dob" type="date" max="9999-12-31">
       <span class="hint">将自动转为 DD/MM/YYYY</span>
     </div>
     <div class="fg">
@@ -214,11 +214,11 @@ textarea{resize:vertical;min-height:60px}
     </div>
     <div class="fg">
       <label><span class="fn">14</span> 签发日期 Date of issue <span class="req">*</span></label>
-      <input id="f14_issue_date" data-required="true" type="date">
+      <input id="f14_issue_date" data-required="true" type="date" max="9999-12-31">
     </div>
     <div class="fg">
       <label><span class="fn">15</span> 有效期至 Valid until <span class="req">*</span></label>
-      <input id="f15_expiry_date" data-required="true" type="date">
+      <input id="f15_expiry_date" data-required="true" type="date" max="9999-12-31">
     </div>
     <div class="fg">
       <label><span class="fn">16</span> 签发国 Issued by (country) <span class="req">*</span></label>
@@ -235,7 +235,7 @@ textarea{resize:vertical;min-height:60px}
     </div>
     <div class="fg">
       <label>出生日期 Date of birth</label>
-      <input id="f17_eu_dob" type="date">
+      <input id="f17_eu_dob" type="date" max="9999-12-31">
     </div>
     <div class="fg">
       <label>国籍 Nationality</label>
@@ -279,7 +279,7 @@ textarea{resize:vertical;min-height:60px}
     </div>
     <div id="pg_permit" style="display:none;grid-column:1/-1" class="grid g2">
       <div class="fg"><label>居住许可编号 Permit number</label><input id="f20_permit_num" type="text"></div>
-      <div class="fg"><label>有效期至 Valid until</label><input id="f20_permit_exp" type="date"></div>
+      <div class="fg"><label>有效期至 Valid until</label><input id="f20_permit_exp" type="date" max="9999-12-31"></div>
     </div>
   </div>
   <div class="nav"><button class="btn btn-s" onclick="prev()">← 上一步</button><button class="btn btn-p" onclick="next()">下一步：职业信息 →</button></div>
@@ -354,11 +354,11 @@ textarea{resize:vertical;min-height:60px}
   <div class="grid g2">
     <div class="fg">
       <label><span class="fn">28</span> 预计抵达申根区日期 Intended date of arrival <span class="req">*</span></label>
-      <input id="f28_arrival" type="date">
+      <input id="f28_arrival" type="date" max="9999-12-31">
     </div>
     <div class="fg">
       <label>预计离开申根区日期 Intended date of departure <span class="req">*</span></label>
-      <input id="f28_departure" type="date">
+      <input id="f28_departure" type="date" max="9999-12-31">
     </div>
     <div class="fg full">
       <label><span class="fn">29</span> 以往是否曾留有指纹记录 Fingerprints collected previously</label>
@@ -370,7 +370,7 @@ textarea{resize:vertical;min-height:60px}
     <div id="pg_fp" style="display:none;grid-column:1/-1" class="grid g2">
       <div class="fg">
         <label>如有，请写明日期 Date, if known</label>
-        <input id="f29_fp_date" type="date">
+        <input id="f29_fp_date" type="date" max="9999-12-31">
       </div>
       <div class="fg">
         <label>如有，请写明签证贴纸号码 Visa sticker number, if known</label>
@@ -381,8 +381,8 @@ textarea{resize:vertical;min-height:60px}
       <label><span class="fn">30</span> 最后目的地入境许可 Entry permit for the final country of destination（如适用）</label>
       <div class="grid g3" style="margin-top:6px">
         <div class="fg"><label>签发机关 Issued by</label><input id="f30_permit_by" type="text" placeholder="签发机关"></div>
-        <div class="fg"><label>有效期自 Valid from</label><input id="f30_permit_from" type="date"></div>
-        <div class="fg"><label>至 Until</label><input id="f30_permit_to" type="date"></div>
+        <div class="fg"><label>有效期自 Valid from</label><input id="f30_permit_from" type="date" max="9999-12-31"></div>
+        <div class="fg"><label>至 Until</label><input id="f30_permit_to" type="date" max="9999-12-31"></div>
       </div>
     </div>
     <div class="divider">第 31 项：邀请人 / 酒店 / 住宿信息</div>
@@ -2751,6 +2751,16 @@ document.addEventListener('change', function(e){
   }
 });
 
+// HTML date inputs permit years longer than four digits in some browsers.
+const FOUR_DIGIT_DATE = /^\d{4}-\d{2}-\d{2}$/;
+document.querySelectorAll('input[type="date"]').forEach(el => {
+  el.addEventListener('input', () => {
+    el.setCustomValidity(!el.value || FOUR_DIGIT_DATE.test(el.value)
+      ? ''
+      : '年份必须为 4 位数字');
+  });
+});
+
 
 function toggleOther(el, targetId){
   const target = document.getElementById(targetId);
@@ -2778,6 +2788,14 @@ const REQUIRED_RADIO = ['sex','marital','doctype','entries','res','cost','fp'];
 function validateStep(step) {
   if (step < 5) return true; // only validate on final export
   let missing = [];
+  const invalidDate = [...document.querySelectorAll('input[type="date"]')].find(el =>
+    el.value && (!FOUR_DIGIT_DATE.test(el.value) || !el.validity.valid)
+  );
+  if (invalidDate) {
+    invalidDate.focus();
+    invalidDate.reportValidity();
+    return false;
+  }
   REQUIRED_TEXT.forEach(id => {
     const el = document.getElementById(id);
     if (el && !el.value.trim()) {
